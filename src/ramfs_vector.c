@@ -216,8 +216,8 @@ ramfs_entry_t *ramfs_get_entry(ramfs_fs_t *fs, const char *path)
     }
 
     if (len - (key - path) == 0) {
-        errno = EINVAL;
-        return NULL;
+        // return root node on empty path
+        return (ramfs_entry_t *) parent;
     }
 
     ssize_t i = find_entry(&parent->entry, key);
@@ -508,12 +508,15 @@ int ramfs_unlink(ramfs_entry_t *entry)
         return -1;
     }
 
+    ramfs_file_t* file = (ramfs_file_t*) entry;
+
     if (remove(entry) == NULL) {
         return -1;
     }
 
     free((void *) entry->name);
-    free(entry);
+    free(file->data);
+    free(file);
     return 0;
 }
 
@@ -707,7 +710,9 @@ int ramfs_rmdir(ramfs_entry_t *entry)
         return -1;
     }
 
-    if (((ramfs_dir_t *) entry)->children_len > 0) {
+    ramfs_dir_t *dir = (ramfs_dir_t *) entry;
+
+    if (dir->children_len > 0) {
         errno = ENOTEMPTY;
         return -1;
     }
@@ -717,7 +722,8 @@ int ramfs_rmdir(ramfs_entry_t *entry)
     }
 
     free((void *) entry->name);
-    free(entry);
+    free(dir->children);
+    free(dir);
     return 0;
 }
 

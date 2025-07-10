@@ -143,8 +143,8 @@ ramfs_entry_t *ramfs_get_entry(ramfs_fs_t *fs, const char *path)
     }
 
     if (len - (key - path) == 0) {
-        errno = EINVAL;
-        return NULL;
+        // return root node on empty path
+        return (ramfs_entry_t *) parent;
     }
 
     return (ramfs_entry_t *) ramfs_rbtree_search(&parent->rbtree, key);
@@ -418,9 +418,12 @@ int ramfs_unlink(ramfs_entry_t *entry)
         return -1;
     }
 
+    ramfs_file_t *file = (ramfs_file_t *) entry;
+
     ramfs_rbtree_delete_node(&entry->parent->rbtree, &entry->rbnode);
     free((void *) entry->rbnode.key);
-    free(entry);
+    free(file->data);
+    free(file);
     return 0;
 }
 

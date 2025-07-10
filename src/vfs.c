@@ -137,9 +137,9 @@ static int ramfs_vfs_fstat(void *ctx, int fd, struct stat *st)
     memset(st, 0, sizeof(*st));
     st->st_mode = S_IRWXG | S_IRWXG | S_IRWXO;
     st->st_size = rst.size;
-    if (st->st_mode == RAMFS_ENTRY_TYPE_DIR) {
+    if (rts.st_mode == RAMFS_ENTRY_TYPE_DIR) {
         st->st_mode |= S_IFDIR;
-    } else if (st->st_mode == RAMFS_ENTRY_TYPE_FILE) {
+    } else if (rst.st_mode == RAMFS_ENTRY_TYPE_FILE) {
         st->st_mode |= S_IFREG;
     }
     return 0;
@@ -160,9 +160,9 @@ static int ramfs_vfs_stat(void *ctx, const char *path, struct stat *st)
     memset(st, 0, sizeof(*st));
     st->st_mode = S_IRWXG | S_IRWXG | S_IRWXO;
     st->st_size = rst.size;
-    if (st->st_mode == RAMFS_ENTRY_TYPE_DIR) {
+    if (rst.st_mode == RAMFS_ENTRY_TYPE_DIR) {
         st->st_mode |= S_IFDIR;
-    } else if (st->st_mode == RAMFS_ENTRY_TYPE_FILE) {
+    } else if (rst.st_mode == RAMFS_ENTRY_TYPE_FILE) {
         st->st_mode |= S_IFREG;
     }
     return 0;
@@ -190,14 +190,26 @@ static int ramfs_vfs_rename(void *ctx, const char *src, const char *dst)
 static DIR *ramfs_vfs_opendir(void *ctx, const char *path)
 {
     ramfs_vfs_t *vfs = (ramfs_vfs_t *) ctx;
-    ramfs_vfs_dh_t *dh = malloc(sizeof(*dh));
+    ramfs_vfs_dh_t *dh;
 
     const ramfs_entry_t *entry = ramfs_get_entry(vfs->fs, path);
     if (entry == NULL) {
         return NULL;
     }
 
-    dh->dh = ramfs_opendir(vfs->fs, entry);
+    ramfs_dh_t* ramfs_dh = ramfs_opendir(vfs->fs, entry);
+    if (!ramfs_dh) {
+        return NULL;
+    }
+
+    dh = calloc(1, sizeof(*dh));
+    if (!dh) {
+        ramfs_closedir(ramfs_dh);
+        return NULL;
+    }
+
+    dh->dh = ramfs_dh;
+
     return (DIR *) dh;
 }
 
@@ -230,6 +242,7 @@ static int ramfs_vfs_readdir_r(void *ctx, DIR *pdir, struct dirent *ent,
     ent->d_ino = ramfs_telldir(dh->dh);
     const char *name = ramfs_get_name(entry);
     strlcpy(ent->d_name, name, sizeof(ent->d_name));
+    free(name);
     ent->d_type = DT_UNKNOWN;
     if (ramfs_is_dir(entry)) {
         ent->d_type = DT_DIR;
