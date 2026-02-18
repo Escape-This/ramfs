@@ -137,9 +137,9 @@ static int ramfs_vfs_fstat(void *ctx, int fd, struct stat *st)
     memset(st, 0, sizeof(*st));
     st->st_mode = S_IRWXG | S_IRWXG | S_IRWXO;
     st->st_size = rst.size;
-    if (rts.st_mode == RAMFS_ENTRY_TYPE_DIR) {
+    if (rst.type == RAMFS_ENTRY_TYPE_DIR) {
         st->st_mode |= S_IFDIR;
-    } else if (rst.st_mode == RAMFS_ENTRY_TYPE_FILE) {
+    } else if (rst.type == RAMFS_ENTRY_TYPE_FILE) {
         st->st_mode |= S_IFREG;
     }
     return 0;
@@ -160,9 +160,9 @@ static int ramfs_vfs_stat(void *ctx, const char *path, struct stat *st)
     memset(st, 0, sizeof(*st));
     st->st_mode = S_IRWXG | S_IRWXG | S_IRWXO;
     st->st_size = rst.size;
-    if (rst.st_mode == RAMFS_ENTRY_TYPE_DIR) {
+    if (rst.type == RAMFS_ENTRY_TYPE_DIR) {
         st->st_mode |= S_IFDIR;
-    } else if (rst.st_mode == RAMFS_ENTRY_TYPE_FILE) {
+    } else if (rst.type == RAMFS_ENTRY_TYPE_FILE) {
         st->st_mode |= S_IFREG;
     }
     return 0;
