@@ -410,3 +410,9 @@ esp_err_t ramfs_vfs_register(const ramfs_vfs_conf_t *conf)
     
 	return ESP_OK;
 }
+
+esp_err_t ramfs_vfs_unregister(const ramfs_vfs_conf_t *conf)
+{
+	return esp_vfs_unregister(conf->base_path);
+}
+

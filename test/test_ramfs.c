@@ -5,10 +5,11 @@
  */
 
 // ---- Test framework ---- //
+#include "freertos/projdefs.h"
 #include "unity.h"
 
 // ---- Code to be tested ---- //
-#include "ramfs/ramfs.h"
+#include "ramfs/vfs.h"
 
 // ---- Additional test fixtures ---- //
 
@@ -73,6 +74,17 @@ TEST_CASE("Function prototype: register and unregister file system", "[esp_ramfs
 
 	ramfs_fs_t *fs = ramfs_init();
 	assert(fs != NULL);
+
+    ramfs_vfs_conf_t ramfs_vfs_conf = {
+	    .base_path = "/ramfs",
+        .fs = fs,
+        .max_files = 5,
+    };
+    ESP_ERROR_CHECK(ramfs_vfs_register(&ramfs_vfs_conf));
+
+	// Mounted!
+
+	ESP_ERROR_CHECK(ramfs_vfs_unregister(&ramfs_vfs_conf));
 
 	ramfs_deinit(fs);
 
