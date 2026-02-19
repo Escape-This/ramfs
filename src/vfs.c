@@ -399,8 +399,15 @@ esp_err_t ramfs_vfs_register(const ramfs_vfs_conf_t *conf)
     }
 
     vfs->fs = conf->fs;
-    strlcpy(vfs->base_path, conf->base_path, sizeof(*vfs->base_path));
+    strlcpy(vfs->base_path, conf->base_path, sizeof(vfs->base_path));
     vfs->fh_len = conf->max_files;
+
+	// Check that the whole path was copied
+	if (strcmp(vfs->base_path, conf->base_path) != 0) {
+		ESP_LOGE(TAG, "base path '%s' is too long!", conf->base_path);	// If not, check the strlcpy() length parameter for bugs
+		free(vfs);
+		return ESP_ERR_INVALID_ARG;
+	}
 
 	ESP_LOGD(TAG, "register ramfs_vs, index=%d, base_path='%s'", index, vfs->base_path);
 
