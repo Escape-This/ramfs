@@ -285,7 +285,7 @@ static int ramfs_vfs_mkdir(void *ctx, const char *path, mode_t mode)
 {
     ramfs_vfs_t *vfs = (ramfs_vfs_t *) ctx;
 
-    return ramfs_mkdir(vfs->fs, path) != NULL;
+    return ramfs_mkdir(vfs->fs, path) != NULL ? 0 : -1;
 }
 
 static int ramfs_vfs_rmdir(void *ctx, const char *path)
