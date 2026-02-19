@@ -126,14 +126,22 @@ static int ramfs_vfs_open(void *ctx, const char *path, int flags, int mode)
 
     ramfs_entry_t *entry = ramfs_get_entry(vfs->fs, path);
 
-    if (entry == NULL && flags & (O_CREAT | O_TRUNC)) {
-    	ESP_LOGD(TAG, "%s: Create new file: path=\"%s\", flags=%x, mode=%x", __func__, path, flags, mode);
-        entry = ramfs_create(vfs->fs, path, flags);
-		if (NULL == entry) {
-    		ESP_LOGW(TAG, "Failed to create file: %s", strerror(errno));
+    if (NULL == entry) {
+		if (flags & (O_CREAT | O_TRUNC)) {
+	    	ESP_LOGD(TAG, "%s: Create new file: path=\"%s\", flags=%x, mode=%x", __func__, path, flags, mode);
+	        entry = ramfs_create(vfs->fs, path, flags);
+			if (NULL == entry) {
+	    		ESP_LOGW(TAG, "Failed to create new file at '%s': %s", path, strerror(errno));
+				return -1;
+			}
+		} else {
+			ESP_LOGW(TAG, "No file at '%s': %s", path, strerror(errno));
 			return -1;
 		}
     }
+	assert(entry != NULL);
+
+    ESP_LOGV(TAG, "%s: found entry for '%s', entry=%p", __func__, path, entry);
 
 
     vfs->fh[fd] = ramfs_open(vfs->fs, entry, flags);
@@ -370,7 +378,7 @@ static int ramfs_vfs_ftruncate(void *ctx, int fd, off_t length)
 
 esp_err_t ramfs_vfs_register(const ramfs_vfs_conf_t *conf)
 {
-    ESP_LOGV(TAG, "%s: path=\"%s\", fs=0x%p, max_files=%d", __func__, conf->base_path, conf->fs, conf->max_files);
+    ESP_LOGV(TAG, "%s: path=\"%s\", fs=%p, max_files=%d", __func__, conf->base_path, conf->fs, conf->max_files);
 
     assert(conf != NULL);
     assert(conf->fs != NULL);

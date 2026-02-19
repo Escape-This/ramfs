@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <sys/stat.h>
 #include <sys/unistd.h>
+#include <sys/dirent.h>
 #include <sys/syslimits.h>
 #include <errno.h>
 
@@ -56,6 +57,27 @@ ramfs_vfs_conf_t ramfs_vfs_conf = {
 // ---- Forward-declared static functions ---- //
 
 
+static bool file_exists(const char* path)
+{
+    FILE* fd = fopen(path, "r");
+    if (NULL == fd) {
+		return false;
+	}
+	fclose(fd);
+	return true;
+}
+
+static bool dir_exists(const char* path)
+{
+    DIR* dir = opendir(path);
+    if (dir == NULL) {
+        return false;
+    }
+	closedir(dir);
+	return true;
+}
+
+
 
 // ---- Cleanup functions ---- //
 
@@ -74,16 +96,14 @@ static void LOCAL_TEST_setUp(void)
 // This will run after each test!
 static void LOCAL_TEST_tearDown(void)
 {
-
-    TEST_ASSERT_EQUAL_MESSAGE(0, errno, "If this is expected for this test, then set errno = 0 before calling teardown");	//
-
 	// Unmount and destroy
 	ESP_ERROR_CHECK(ramfs_vfs_unregister(&ramfs_vfs_conf));
 	ramfs_deinit(ramfs_vfs_conf.fs);
 	ramfs_vfs_conf.fs = NULL;
 }
 
-// NOTE: These tests were written for an existing libray, and NOT created using TDD!
+// NOTE: These tests were written for an existing libray, not originally created with TDD.
+// There were quite a few bugs though, so much of the below is TDD and can be relied upon
 
 
 TEST_CASE("Register and Unregister file system", "[esp_ramfs][TDD-dev]")
@@ -101,17 +121,63 @@ TEST_CASE("Create a file in the root directory", "[esp_ramfs][TDD-dev]")
 
 	const char* filepath = MOUNT_POINT "/file.txt";
 
-    FILE* fd = fopen(filepath, "w");
-    TEST_ASSERT_NOT_NULL(fd);
+	// Shouldn't be there yet
+	TEST_ASSERT_FALSE(file_exists(filepath));
 
-    int ret = fclose(fd);
-    TEST_ASSERT_EQUAL(0, ret);
+	// Open for writing, creates the file
+	{
+	    FILE* fd = fopen(filepath, "w");
+	    TEST_ASSERT_NOT_NULL(fd);
 	
+	    int ret = fclose(fd);
+	    TEST_ASSERT_EQUAL(0, ret);
+	}
+
+	TEST_ASSERT_TRUE(file_exists(filepath));
 
     LOCAL_TEST_tearDown();
 }
 
 
+// ---- Tests below never failed, and so are marked with the [not-TDD] tag
+
+TEST_CASE("Create a directory", "[esp_ramfs][not-TDD]")
+{
+    LOCAL_TEST_setUp();
+
+	const char* dirpath = MOUNT_POINT "/dir";
+
+	// Shouldn't be there yet
+	TEST_ASSERT_FALSE(dir_exists(dirpath));
+
+	// Create the directory
+	{
+	    mkdir(dirpath, 0755);
+	}
+
+	TEST_ASSERT_TRUE(dir_exists(dirpath));
+
+    LOCAL_TEST_tearDown();
+}
+
+TEST_CASE("Create a file in a directory", "[esp_ramfs][not-TDD]")
+{
+    LOCAL_TEST_setUp();
+
+	const char* dirpath = MOUNT_POINT "/dir";
+
+	// Shouldn't be there yet
+	TEST_ASSERT_FALSE(dir_exists(dirpath));
+
+	// Create the directory
+	{
+	    mkdir(dirpath, 0755);
+	}
+
+	TEST_ASSERT_TRUE(dir_exists(dirpath));
+
+    LOCAL_TEST_tearDown();
+}
 
 
 
