@@ -6,6 +6,8 @@
 #include "ramfs/vfs.h"
 
 #include "esp_err.h"
+#include "esp_check.h"
+#include "esp_log.h"
 #include "esp_vfs.h"
 
 #include <dirent.h>
@@ -14,6 +16,12 @@
 #include <string.h>
 #include <sys/fcntl.h>
 #include <sys/stat.h>
+#include <errno.h>
+
+static const char* TAG = "ramfs";
+
+#undef ESP_LOGV
+#define ESP_LOGV ESP_LOGD
 
 
 #ifndef CONFIG_RAMFS_MAX_PARTITIONS
@@ -85,6 +93,8 @@ static ssize_t ramfs_vfs_read(void *ctx, int fd, void *data, size_t size)
 
 static int ramfs_vfs_open(void *ctx, const char *path, int flags, int mode)
 {
+    ESP_LOGV(TAG, "%s: path=\"%s\", flags=%x, mode=%x", __func__, path, flags, mode);
+
     ramfs_vfs_t *vfs = (ramfs_vfs_t *) ctx;
 
     int fd;
@@ -94,18 +104,22 @@ static int ramfs_vfs_open(void *ctx, const char *path, int flags, int mode)
         }
     }
     if (fd >= vfs->fh_len) {
+        ESP_LOGE(TAG, "open: no free file descriptors");
+		errno = ENFILE;
         return -1;
     }
 
     ramfs_entry_t *entry = ramfs_get_entry(vfs->fs, path);
 
     if (entry == NULL && flags & (O_CREAT | O_TRUNC)) {
+    	ESP_LOGD(TAG, "%s: Create new file: path=\"%s\", flags=%x, mode=%x", __func__, path, flags, mode);
         entry = ramfs_create(vfs->fs, path, flags);
+		if (NULL == entry) {
+    		ESP_LOGW(TAG, "Failed to create file: %s", strerror(errno));
+			return -1;
+		}
     }
 
-    if (entry == NULL) {
-        return -1;
-    }
 
     vfs->fh[fd] = ramfs_open(vfs->fs, entry, flags);
     return fd;
@@ -387,5 +401,6 @@ esp_err_t ramfs_vfs_register(const ramfs_vfs_conf_t *conf)
     }
 
     s_ramfs_vfs[index] = vfs;
-    return ESP_OK;
+    
+	return ESP_OK;
 }
