@@ -58,6 +58,21 @@ static esp_err_t ramfs_get_empty(int *index)
     return ESP_ERR_NOT_FOUND;
 }
 
+static esp_err_t ramfs_get_index_from_path(int *index, const char* base_path)
+{
+    int i;
+
+    for (i = 0; i < CONFIG_RAMFS_MAX_PARTITIONS; i++) {
+        if (s_ramfs_vfs[i] != NULL) {
+			if (0 == strcmp(base_path, s_ramfs_vfs[i]->base_path)) {
+	            *index = i;
+	            return ESP_OK;
+			}
+        }
+    }
+    return ESP_ERR_NOT_FOUND;
+}
+
 static ssize_t ramfs_vfs_write(void *ctx, int fd, const void *data, size_t size)
 {
     ramfs_vfs_t *vfs = (ramfs_vfs_t *) ctx;
@@ -424,6 +439,14 @@ esp_err_t ramfs_vfs_register(const ramfs_vfs_conf_t *conf)
 
 esp_err_t ramfs_vfs_unregister(const ramfs_vfs_conf_t *conf)
 {
+	int i;
+	ESP_RETURN_ON_ERROR(
+		ramfs_get_index_from_path(&i, conf->base_path),
+		TAG, "no ramfs found for '%s'", conf->base_path
+	);
+
+	s_ramfs_vfs[i] = NULL;
+
 	return esp_vfs_unregister(conf->base_path);
 }
 
