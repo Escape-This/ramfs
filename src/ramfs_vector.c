@@ -43,6 +43,9 @@ typedef struct ramfs_dh_t {
     ramfs_fs_t *fs;
     ramfs_dir_t *dir;
     size_t loc;
+	ramfs_dir_t cached_dir;
+	size_t cached_loc;
+	int go_slow;	// boolean
 } ramfs_dh_t;
 
 typedef struct ramfs_fh_t {
@@ -72,7 +75,7 @@ static ssize_t find_entry(ramfs_entry_t *dir, const char *name)
         }
     }
 
-    errno = ENOENT;
+//    errno = ENOENT;	// Let the caller decide if this is an error or not.
     return -(last + 2);
 }
 
@@ -132,6 +135,7 @@ static ramfs_entry_t *remove(ramfs_entry_t *entry)
 {
     ssize_t i = find_entry(&entry->parent->entry, entry->name);
     if (i < 0) {
+	errno = ENOENT;
         return NULL;
     }
 
@@ -153,7 +157,9 @@ void ramfs_deinit(ramfs_fs_t *fs)
 {
     assert(fs != NULL);
 
-    ramfs_rmtree(&fs->root.entry);
+    int ret = ramfs_rmtree(&fs->root.entry);
+	assert(ret == 0);
+
     free(fs);
 }
 
@@ -179,6 +185,7 @@ ramfs_entry_t *ramfs_get_parent(ramfs_fs_t *fs, const char *path)
         ssize_t i = find_entry(&dir->entry, key);
         free(key);
         if (i < 0) {
+			errno = ENOENT;
             return NULL;
         }
         if (!ramfs_is_dir(dir->children[i])) {
@@ -222,7 +229,8 @@ ramfs_entry_t *ramfs_get_entry(ramfs_fs_t *fs, const char *path)
 
     ssize_t i = find_entry(&parent->entry, key);
     if (i < 0) {
-        return NULL;
+        errno = ENOENT;
+		return NULL;
     }
 
     return parent->children[i];
@@ -321,7 +329,7 @@ ramfs_entry_t *ramfs_create(ramfs_fs_t *fs, const char *path, int flags)
         errno = EEXIST;
         return NULL;
     }
-    i = -i - 1;
+    i = -i - 1;	// Pretty sure this is always the last index + 1 i.e. 'insert after the last element'
 
     if (strlen(name) == 0 || strchr(name, '/')) {
         errno = EINVAL;
@@ -503,10 +511,12 @@ int ramfs_unlink(ramfs_entry_t *entry)
 {
     assert(entry != NULL);
 
-    if (entry->type != RAMFS_ENTRY_TYPE_FILE) {
-        errno = ENFILE;
+    if (entry->type == RAMFS_ENTRY_TYPE_DIR) {
+        errno = EISDIR;
         return -1;
     }
+
+	assert(entry->type == RAMFS_ENTRY_TYPE_FILE);
 
     ramfs_file_t* file = (ramfs_file_t*) entry;
 
@@ -555,7 +565,8 @@ int ramfs_rename(ramfs_fs_t *fs, const char *src, const char *dst)
     }
     ssize_t src_index = find_entry(&src_parent->entry, name);
     if (src_index < 0) {
-        return -1;
+        errno = ENOENT;
+		return -1;
     }
 
     len = strlen(dst);
@@ -600,8 +611,24 @@ ramfs_dh_t *ramfs_opendir(ramfs_fs_t *fs, const ramfs_entry_t *entry)
     }
 
     ramfs_dh_t *dh = calloc(1, sizeof(*dh));
+	if (NULL == dh) {
+		return NULL;
+	}
     dh->fs = fs;
     dh->dir = (ramfs_dir_t *) entry;
+
+	// Make a copy of the directory's current state
+	dh->cached_dir = *dh->dir;
+	dh->cached_dir.children = calloc(dh->cached_dir.children_len, sizeof(ramfs_entry_t*));
+	if (NULL == dh->cached_dir.children) {
+		// NULL may be returned when there are no children
+		if (dh->cached_dir.children_len > 0) {
+			free(dh);
+			return NULL;
+		}
+	}
+	memcpy(dh->cached_dir.children, dh->dir->children, (dh->cached_dir.children_len * sizeof(ramfs_entry_t*)));
+
     return dh;
 }
 
@@ -609,18 +636,55 @@ void ramfs_closedir(ramfs_dh_t *dh)
 {
     assert(dh != NULL);
 
+	// cleanup dh->cached_dir
+	// free(dh->cached_dir);	// Same lifetime as 'dh'
+	free(dh->cached_dir.children);
+
     free(dh);
 }
 
+// Relies on two assumptions:  (currently doesn't; see below)
+// 	- New elements are added at the end.
+//  - Elements remain in order when deleted
+//
+// TODO: Use the two assumptions above to be more efficient when a file is deleted.
+// 	(currently it just searches the whole thing for every subsequent readdir, leading to O(n^2) behaviour
 const ramfs_entry_t *ramfs_readdir(ramfs_dh_t *dh)
 {
     assert(dh != NULL);
 
-    if (dh->loc < dh->dir->children_len) {
-        return dh->dir->children[dh->loc++];
-    }
+	if (dh->cached_loc >= dh->cached_dir.children_len) {
+		return NULL;
+	}
+	if (dh->loc >= dh->dir->children_len) {
+		dh->go_slow = 0;
+//		return NULL;
+	}
 
-    return NULL;
+	if (!dh->go_slow) {
+		if (dh->dir->children[dh->loc] == dh->cached_dir.children[dh->cached_loc]) {
+			dh->cached_loc++;
+	        return dh->dir->children[dh->loc++];
+		} else {
+			dh->go_slow = 1;
+		}
+	}
+
+	// Someone's been deleting files while the directory was open, so we're out of sync!
+	// (Adding files happens at the end of the iterator, so is not a problem)
+	// We need to find the entry in the original list to ensure it still exists (otherwise NULL-dereference!)
+	// This will slow things down, but at least we give the correct results.
+	for (int i=0; i < dh->dir->children_len; i++) {
+		if (dh->dir->children[i] == dh->cached_dir.children[dh->cached_loc]) {
+			dh->loc++;	// redundant
+			dh->cached_loc++;
+	        return dh->dir->children[i];		
+		}
+	}
+	
+	// The (cached) entry was deleted, so continue with the next entry...
+	dh->cached_loc++;
+	return ramfs_readdir(dh);	// tail-recursion
 }
 
 void ramfs_seekdir(ramfs_dh_t *dh, long loc)
@@ -727,20 +791,22 @@ int ramfs_rmdir(ramfs_entry_t *entry)
     return 0;
 }
 
-void ramfs_rmtree(ramfs_entry_t *entry)
+int ramfs_rmtree(ramfs_entry_t *entry)
 {
     assert(entry != NULL);
 
     if (ramfs_is_file(entry)) {
-        ramfs_unlink(entry);
-        return;
+        return ramfs_unlink(entry);
     }
 
     ramfs_dir_t *dir = (ramfs_dir_t *) entry;
 
     for (int i = 0; i < dir->children_len; i++) {
         if (ramfs_is_dir(dir->children[i])) {
-            ramfs_rmtree(dir->children[i]);
+            int ret = ramfs_rmtree(dir->children[i]);
+			if (ret != 0) { 
+				return ret;
+			}
         } else {
             free(((ramfs_file_t *) dir->children[i])->data);
             free((void *) dir->children[i]->name);
@@ -751,4 +817,5 @@ void ramfs_rmtree(ramfs_entry_t *entry)
         free((void *) entry->name);
         free(entry);
     }
+	return 0;
 }
