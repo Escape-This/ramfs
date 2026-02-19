@@ -281,13 +281,19 @@ static void ramfs_vfs_seekdir(void *ctx, DIR *pdir, long offset)
     ramfs_seekdir(dh->dh, offset);
 }
 
+__attribute__((nonnull))
 static int ramfs_vfs_mkdir(void *ctx, const char *path, mode_t mode)
 {
     ramfs_vfs_t *vfs = (ramfs_vfs_t *) ctx;
 
-    return ramfs_mkdir(vfs->fs, path) != NULL ? 0 : -1;
+	if (NULL == ramfs_mkdir(vfs->fs, path)) {
+		ESP_LOGW(TAG, "cannot make directory '%s': %s", path, strerror(errno));
+		return -1;
+	}	
+	return 0;
 }
 
+__attribute__((nonnull))
 static int ramfs_vfs_rmdir(void *ctx, const char *path)
 {
     ramfs_vfs_t *vfs = (ramfs_vfs_t *) ctx;
