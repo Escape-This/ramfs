@@ -19,3 +19,6 @@ idf_component_register(
     PRIV_REQUIRES testfixture_emmc_fatfs
 
 )
+
+target_compile_options(${COMPONENT_LIB} PRIVATE -Werror)	# Doesn't work?
+target_compile_options(${COMPONENT_LIB} PRIVATE -fanalyzer)
