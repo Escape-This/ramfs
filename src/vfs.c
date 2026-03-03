@@ -21,7 +21,7 @@
 static const char* TAG = "ramfs";
 
 #ifndef CONFIG_RAMFS_MAX_PARTITIONS
-# define CONFIG_RAMFS_MAX_PARTITIONS 1
+# define CONFIG_RAMFS_MAX_PARTITIONS 4
 #endif
 
 #if defined(CONFIG_RAMFS_VFS_SUPPORT_DIR)
