@@ -64,7 +64,7 @@ static ramfs_vfs_conf_t ramfs_vfs_conf = {
 
 // ---- Forward-declared static functions ---- //
 
-
+// Deliberately avoids using stat()
 static bool file_exists(const char* path)
 {
 	int cache_errno = errno;
@@ -80,6 +80,7 @@ static bool file_exists(const char* path)
 	return true;
 }
 
+// Deliberately avoids using stat()
 static bool dir_exists(const char* path)
 {
 	int cache_errno = errno;
