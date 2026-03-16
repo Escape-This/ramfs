@@ -1,7 +1,15 @@
-/* Not developed with TDD!
+/* test harness for ramfs.
  *
- * Instead, these are just tests of an existing open-source library. Added after I found
- * that the mkdir() function wasn't working!
+ * Mostly calls ramfs/vfs.h. Indirectly covers vfs.c, ramfs.c
+ *
+ * Note: not developed with TDD; rather, this was an existing library, but when using it I found
+ * that the mkdir() function wasn't working! So, this test harness was written to help me
+ * debug and fix it. That's why almost all the tests are about directories.
+ *
+ * Note: Assume every single TEST_ASSERT statements has a purpose. All tests* have, at some point,
+ * failed and required code to 'fix' (i.e. implement the correct functionality). Exception is tests
+ * marked SANITY - these are either copies of stuff already tested in a previous TEST_CASE, or they
+ * were added to aid in debugging.
  */
 
 // ---- Test framework ---- //
