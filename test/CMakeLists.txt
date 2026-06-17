@@ -1,6 +1,16 @@
+
+# stdlib dependencies only
+set(TEST_DIRS "portable")
+
+# The vfs component is not available on the linux target
+if(NOT ${target} STREQUAL "linux")
+list(APPEND TEST_DIRS "requires_vfs")
+endif()
+
 idf_component_register(
-	SRC_DIRS "."
 	INCLUDE_DIRS "."
+	SRC_DIRS ${TEST_DIRS}
+	
 	
 	# Allow us to write tests against 'internal' functions, not just the external API
     # INCLUDE_DIRS "../priv_include"
