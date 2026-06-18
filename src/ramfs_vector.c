@@ -45,7 +45,6 @@ typedef struct ramfs_dh_t {
     size_t loc;
 	ramfs_dir_t cached_dir;
 	size_t cached_loc;
-	int go_slow;	// boolean
 } ramfs_dh_t;
 
 typedef struct ramfs_fh_t {
@@ -643,12 +642,15 @@ void ramfs_closedir(ramfs_dh_t *dh)
     free(dh);
 }
 
-// Relies on two assumptions:  (currently doesn't; see below)
+// Relies on two assumptions:
 // 	- New elements are added at the end.
-//  - Elements remain in order when deleted
+//  - Elements remain in-order when deleted
 //
-// TODO: Use the two assumptions above to be more efficient when a file is deleted.
-// 	(currently it just searches the whole thing for every subsequent readdir, leading to O(n^2) behaviour
+//	Each directory iterator will need to perform a scan of the directory for
+//  each file deleted after it called opendir(). i.e. each file deleted
+//  costs O(1), whether or not the deleted file is ahead or behind the iterator.
+//
+//  Deleting all files in a directory takes O(n^2) amortised time. TODO: optimise
 const ramfs_entry_t *ramfs_readdir(ramfs_dh_t *dh)
 {
     assert(dh != NULL);
@@ -656,19 +658,13 @@ const ramfs_entry_t *ramfs_readdir(ramfs_dh_t *dh)
 	if (dh->cached_loc >= dh->cached_dir.children_len) {
 		return NULL;
 	}
-	if (dh->loc >= dh->dir->children_len) {
-		dh->go_slow = 0;
-//		return NULL;
-	}
 
-	if (!dh->go_slow) {
-		if (dh->dir->children[dh->loc] == dh->cached_dir.children[dh->cached_loc]) {
-			dh->cached_loc++;
-	        return dh->dir->children[dh->loc++];
-		} else {
-			dh->go_slow = 1;
-		}
+	if (dh->dir->children[dh->loc] == dh->cached_dir.children[dh->cached_loc]) {
+ 		// Happy path (no files deleted)
+		dh->cached_loc++;
+        return dh->dir->children[dh->loc++];
 	}
+	
 
 	// Someone's been deleting files while the directory was open, so we're out of sync!
 	// (Adding files happens at the end of the iterator, so is not a problem)
@@ -676,9 +672,11 @@ const ramfs_entry_t *ramfs_readdir(ramfs_dh_t *dh)
 	// This will slow things down, but at least we give the correct results.
 	for (int i=0; i < dh->dir->children_len; i++) {
 		if (dh->dir->children[i] == dh->cached_dir.children[dh->cached_loc]) {
-			dh->loc++;	// redundant
+			// We've got our footing again, continue normally until the next deleted file
+			dh->loc = i;
+
 			dh->cached_loc++;
-	        return dh->dir->children[i];		
+	        return dh->dir->children[dh->loc++];		
 		}
 	}
 	

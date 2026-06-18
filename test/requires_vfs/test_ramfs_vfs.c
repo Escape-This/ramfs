@@ -606,4 +606,80 @@ TEST_CASE("Delete behind and in front of the iterator", "[esp_ramfs]")
     LOCAL_TEST_tearDown();
 }
 
+TEST_CASE("Delete many behind and in front of the iterator", "[esp_ramfs]")
+{
+    LOCAL_TEST_setUp();
+
+	int ret;
+
+	const char* dirpath = MOUNT_POINT "/dir/";
+    mkdir(dirpath, 0755);
+
+	// With enough of them, the pattern of failures becomes more obvious
+	const int number_of_files = 10;
+    const char* file_path[10] = {
+        MOUNT_POINT "/dir/" "0",
+        MOUNT_POINT "/dir/" "1",
+        MOUNT_POINT "/dir/" "2",
+        MOUNT_POINT "/dir/" "3",
+        MOUNT_POINT "/dir/" "4",
+        MOUNT_POINT "/dir/" "5",
+        MOUNT_POINT "/dir/" "6",
+        MOUNT_POINT "/dir/" "7",
+        MOUNT_POINT "/dir/" "8",
+        MOUNT_POINT "/dir/" "9",
+    };
+    for (int i = 0; i < number_of_files; i++) {
+	    FILE* fd = fopen(file_path[i], "w");
+	    TEST_ASSERT_NOT_NULL(fd);
+	
+	    ret = fclose(fd);
+	    TEST_ASSERT_EQUAL(0, ret);
+    }
+
+	char scratch_path[100];
+    strncpy(scratch_path, dirpath, 100);
+
+    DIR* dir = opendir(dirpath);       // uses approximately 596 bytes of heap memory (vfs_fat_dir_t)
+    TEST_ASSERT_NOT_NULL_MESSAGE(dir, SANITY);
+    
+	struct dirent * entry;
+	int count = 0;
+	// Read several entries
+	for (int i=0; i < 3; i++) {
+		entry = readdir(dir);
+		count++;
+	}
+	// Delete two of the already read ones
+	ret = unlink(file_path[1]);
+	ret = unlink(file_path[2]);
+	ret = unlink(file_path[6]);
+	ret = unlink(file_path[8]);
+	ret = unlink(file_path[7]);
+
+
+    while ((entry = readdir(dir)) != NULL) {
+		ESP_LOGI(TAG, "entry[%d]: '%s'", count, entry->d_name);
+        scratch_path[strlen(dirpath)] = '\0';  // No need to write the directory each time
+        strlcat(scratch_path, entry->d_name, 100);
+
+		// Whether a file added/removed after the call to opendir() is returned by subsequent readdir is unspecified.
+		// The 'implementation' doesn't even need to Ddocument it! Or consistently do one, and not the other.
+		if (count == 6) {
+			count += 3;	// In our case, though, it will consistently skip deleted directories.
+		}
+
+		TEST_ASSERT_EQUAL_STRING(file_path[count], scratch_path);
+
+		count++;
+	}
+	ret = closedir(dir);
+	TEST_ASSERT_EQUAL_MESSAGE(0, ret, strerror(errno));
+
+	TEST_ASSERT_EQUAL(number_of_files, count);
+
+
+
+    LOCAL_TEST_tearDown();
+}
 
