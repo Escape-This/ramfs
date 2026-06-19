@@ -642,15 +642,14 @@ void ramfs_closedir(ramfs_dh_t *dh)
     free(dh);
 }
 
-// Relies on two assumptions:
+// Correctness relies on two assumptions:
 // 	- New elements are added at the end.
 //  - Elements remain in-order when deleted
 //
-//	Each directory iterator will need to perform a scan of the directory for
-//  each file deleted after it called opendir(). i.e. each file deleted
-//  costs O(1), whether or not the deleted file is ahead or behind the iterator.
+//	Deletes on or behind the iterator add a cost of O(1) per deleted file.
+//  Deletes in front of the iterator cost O(n) per deleted file.
 //
-//  Deleting all files in a directory takes O(n^2) amortised time. TODO: optimise
+//  Thus, deleting all files in a directory takes O(n) amortised time.
 const ramfs_entry_t *ramfs_readdir(ramfs_dh_t *dh)
 {
     assert(dh != NULL);
@@ -668,9 +667,11 @@ const ramfs_entry_t *ramfs_readdir(ramfs_dh_t *dh)
 
 	// Someone's been deleting files while the directory was open, so we're out of sync!
 	// (Adding files happens at the end of the iterator, so is not a problem)
-	// We need to find the entry in the original list to ensure it still exists (otherwise NULL-dereference!)
-	// This will slow things down, but at least we give the correct results.
-	for (int i=0; i < dh->dir->children_len; i++) {
+	// We need to find where it is to re-align the lists and continue. There are two options:
+	// (1) it was moved backward in the list because earlier entries were deleted
+	// (2) this entry was itself deleted, before the iterator got to it.
+	// Number (1) is by far the most likely, so we check all files behind the iterator first.
+	for (int i=(dh->loc - 1); i >= 0; i--) {
 		if (dh->dir->children[i] == dh->cached_dir.children[dh->cached_loc]) {
 			// We've got our footing again, continue normally until the next deleted file
 			dh->loc = i;
